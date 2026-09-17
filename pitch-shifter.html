@@ -594,6 +594,12 @@
         <button class="preset-btn" id="looperClearBtn" style="width:64px; height:64px; border-radius:50%; padding:0;">Сброс</button>
       </div>
     </div>
+    <div class="switch-row" style="justify-content:center; margin-top:12px;">
+      <div class="switch-item">
+        <div class="footswitch" id="looperOverdubFootswitch"></div>
+        <div class="fx-label">Наложение</div>
+      </div>
+    </div>
     <div class="fx-label" style="text-align:center; margin-top:10px;" id="looperStatus">Готов к записи</div>
   </div>
 
@@ -853,6 +859,7 @@
         this.writeIndex = 0;
         this.readIndex = 0;
         this.state = 'idle'; // idle | recording | playing
+        this.overdub = false;
         this.port.onmessage = (e) => {
           const d = e.data;
           if (!d) return;
@@ -871,8 +878,11 @@
             this.state = 'playing';
           } else if (d.type === 'stop'){
             this.state = 'idle';
+          } else if (d.type === 'overdub'){
+            this.overdub = !!d.enabled;
           } else if (d.type === 'clear'){
             this.state = 'idle';
+            this.overdub = false;
             this.writeIndex = 0;
             this.buffer.fill(0);
           }
@@ -897,7 +907,13 @@
               this.readIndex = (this.readIndex + 1) % this.loopLength;
             }
           } else if (this.state === 'playing' && this.loopLength > 0){
-            output[i] = this.buffer[this.readIndex];
+            if (this.overdub){
+              const existing = this.buffer[this.readIndex];
+              this.buffer[this.readIndex] = existing * 0.97 + inSample;
+              output[i] = existing;
+            } else {
+              output[i] = this.buffer[this.readIndex];
+            }
             this.readIndex++;
             if (this.readIndex >= this.loopLength) this.readIndex = 0;
           } else {
@@ -986,6 +1002,7 @@
   const looperMixValue = document.getElementById('looperMixValue');
   const looperClearBtn = document.getElementById('looperClearBtn');
   const looperFootswitch = document.getElementById('looperFootswitch');
+  const looperOverdubFootswitch = document.getElementById('looperOverdubFootswitch');
   const looperStatus = document.getElementById('looperStatus');
 
   const MAJOR_INTERVALS = [0,2,4,5,7,9,11];
@@ -1049,6 +1066,7 @@
   let looperLengthKnobVal = 0.286, looperMixKnobVal = 0.667;
   let looperState = 'idle'; // idle | recording | playing
   let looperHasContent = false;
+  let looperOverdubEnabled = false;
 
   function makeDistortionCurve(driveNorm){
     const n = 1024;
@@ -1262,13 +1280,26 @@
     } else if (looperState === 'playing'){
       looperNode.port.postMessage({ type: 'stop' });
       looperState = 'idle';
+      if (looperOverdubEnabled){
+        looperOverdubEnabled = false;
+        looperOverdubFootswitch.classList.remove('engaged');
+        looperNode.port.postMessage({ type: 'overdub', enabled: false });
+      }
     }
     updateLooperUI();
+  }
+  function toggleLooperOverdub(){
+    if (!looperNode) return;
+    looperOverdubEnabled = !looperOverdubEnabled;
+    looperOverdubFootswitch.classList.toggle('engaged', looperOverdubEnabled);
+    looperNode.port.postMessage({ type: 'overdub', enabled: looperOverdubEnabled });
   }
   function looperClear(){
     if (looperNode) looperNode.port.postMessage({ type: 'clear' });
     looperState = 'idle';
     looperHasContent = false;
+    looperOverdubEnabled = false;
+    looperOverdubFootswitch.classList.remove('engaged');
     updateLooperUI();
   }
 
@@ -1653,7 +1684,9 @@
     reverbInput=null; convolverNode=null; reverbToneFilter=null; reverbDryGain=null; reverbWetOutput=null; reverbSum=null;
     masterGainNode=null; limiterNode=null;
     looperInput=null; looperNode=null; looperDryGain=null; looperWetGain=null; looperSum=null;
-    looperState='idle'; looperHasContent=false; updateLooperUI();
+    looperState='idle'; looperHasContent=false; looperOverdubEnabled=false;
+    looperOverdubFootswitch.classList.remove('engaged');
+    updateLooperUI();
     running=false;
     powerBtn.textContent = 'Включить микрофон';
     powerBtn.classList.remove('on');
@@ -1711,6 +1744,7 @@
   makeSmallKnob(looperLengthKnob, looperLengthIndicator, ()=>looperLengthKnobVal, applyLooperLength);
   makeSmallKnob(looperMixKnob, looperMixIndicator, ()=>looperMixKnobVal, applyLooperMix);
   looperFootswitch.addEventListener('click', looperFootswitchTap);
+  looperOverdubFootswitch.addEventListener('click', toggleLooperOverdub);
   looperClearBtn.addEventListener('click', looperClear);
 
   keyRootSelect.addEventListener('change', e=>{
