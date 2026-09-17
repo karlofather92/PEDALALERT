@@ -303,6 +303,13 @@
   .patch-btn:disabled{ opacity:0.25; }
   .patch-btn:active{ transform: translateY(1px); }
 
+  .footswitch.recording::after{
+    background: var(--screen-glow);
+    box-shadow: 0 0 6px rgba(255,180,84,0.85);
+    animation: patch-blink 0.6s infinite;
+  }
+  @keyframes patch-blink{ 50%{ opacity:0.25; } }
+
   .presets{
     display:grid; grid-template-columns: repeat(5,1fr); gap:6px;
     margin: 18px 0 16px;
@@ -567,6 +574,29 @@
     </div>
   </div>
 
+  <div class="pedal" id="looperPedalBlock">
+    <div class="pedal-header">
+      <div class="pedal-title">Лупер</div>
+      <div class="footswitch" id="looperFootswitch"></div>
+    </div>
+    <div class="knob-row">
+      <div class="fx-module">
+        <div class="knob-outer small" id="looperLengthKnob"><div class="knob-indicator" id="looperLengthIndicator"></div></div>
+        <div class="fx-label">Длина</div>
+        <div class="fx-value" id="looperLengthValue">1.5 с</div>
+      </div>
+      <div class="fx-module">
+        <div class="knob-outer small" id="looperMixKnob"><div class="knob-indicator" id="looperMixIndicator"></div></div>
+        <div class="fx-label">Микс</div>
+        <div class="fx-value" id="looperMixValue">100%</div>
+      </div>
+      <div class="fx-module">
+        <button class="preset-btn" id="looperClearBtn" style="width:64px; height:64px; border-radius:50%; padding:0;">Сброс</button>
+      </div>
+    </div>
+    <div class="fx-label" style="text-align:center; margin-top:10px;" id="looperStatus">Готов к записи</div>
+  </div>
+
   <div class="master-row">
     <div class="knob-outer small" id="masterKnob"><div class="knob-indicator" id="masterIndicator"></div></div>
     <div class="fx-label">Выходная громкость</div>
@@ -813,6 +843,71 @@
       }
     }
     registerProcessor('pitch-shifter', PitchShifterProcessor);
+
+    class LooperProcessor extends AudioWorkletProcessor {
+      constructor(){
+        super();
+        this.maxSamples = Math.floor(sampleRate * 4.5);
+        this.buffer = new Float32Array(this.maxSamples);
+        this.loopLength = Math.floor(sampleRate * 1.5);
+        this.writeIndex = 0;
+        this.readIndex = 0;
+        this.state = 'idle'; // idle | recording | playing
+        this.port.onmessage = (e) => {
+          const d = e.data;
+          if (!d) return;
+          if (d.type === 'record'){
+            this.loopLength = Math.min(this.maxSamples, Math.max(1, Math.floor(sampleRate * d.seconds)));
+            this.writeIndex = 0;
+            this.state = 'recording';
+          } else if (d.type === 'stopRecording'){
+            if (this.state === 'recording'){
+              this.loopLength = Math.max(1, this.writeIndex);
+              this.readIndex = 0;
+              this.state = 'playing';
+            }
+          } else if (d.type === 'play'){
+            this.readIndex = 0;
+            this.state = 'playing';
+          } else if (d.type === 'stop'){
+            this.state = 'idle';
+          } else if (d.type === 'clear'){
+            this.state = 'idle';
+            this.writeIndex = 0;
+            this.buffer.fill(0);
+          }
+        };
+      }
+      process(inputs, outputs){
+        const input = inputs[0][0];
+        const output = outputs[0][0];
+        if (!output) return true;
+        for (let i = 0; i < output.length; i++){
+          const inSample = input ? input[i] : 0;
+          if (this.state === 'recording'){
+            if (this.writeIndex < this.loopLength){
+              this.buffer[this.writeIndex] = inSample;
+              this.writeIndex++;
+              output[i] = 0;
+            } else {
+              this.readIndex = 0;
+              this.state = 'playing';
+              this.port.postMessage({ type: 'autoPlay' });
+              output[i] = this.buffer[this.readIndex];
+              this.readIndex = (this.readIndex + 1) % this.loopLength;
+            }
+          } else if (this.state === 'playing' && this.loopLength > 0){
+            output[i] = this.buffer[this.readIndex];
+            this.readIndex++;
+            if (this.readIndex >= this.loopLength) this.readIndex = 0;
+          } else {
+            output[i] = 0;
+          }
+        }
+        return true;
+      }
+    }
+    registerProcessor('looper', LooperProcessor);
   `;
 
   const pitchTrack = document.getElementById('pitchTrack');
@@ -883,6 +978,16 @@
   const reverbMixValue = document.getElementById('reverbMixValue');
   const reverbFootswitch = document.getElementById('reverbFootswitch');
 
+  const looperLengthKnob = document.getElementById('looperLengthKnob');
+  const looperLengthIndicator = document.getElementById('looperLengthIndicator');
+  const looperLengthValue = document.getElementById('looperLengthValue');
+  const looperMixKnob = document.getElementById('looperMixKnob');
+  const looperMixIndicator = document.getElementById('looperMixIndicator');
+  const looperMixValue = document.getElementById('looperMixValue');
+  const looperClearBtn = document.getElementById('looperClearBtn');
+  const looperFootswitch = document.getElementById('looperFootswitch');
+  const looperStatus = document.getElementById('looperStatus');
+
   const MAJOR_INTERVALS = [0,2,4,5,7,9,11];
   const MINOR_INTERVALS = [0,2,3,5,7,8,10];
   let keyRootValue = 0;
@@ -941,6 +1046,9 @@
   let reverbDecayKnobVal = 0.3, reverbToneKnobVal = 0.5, reverbMixKnobVal = 0.25;
   let masterKnobVal = 0.5;
   let distEngaged = true, compEngaged = true, delayEngaged = true, reverbEngaged = true;
+  let looperLengthKnobVal = 0.286, looperMixKnobVal = 0.667;
+  let looperState = 'idle'; // idle | recording | playing
+  let looperHasContent = false;
 
   function makeDistortionCurve(driveNorm){
     const n = 1024;
@@ -1117,7 +1225,54 @@
     if (masterGainNode && audioCtx) masterGainNode.gain.setTargetAtTime(v * 2, audioCtx.currentTime, 0.01);
   }
 
-  let patchOrder = ['pitch','dist','comp','delay','reverb'];
+  function applyLooperLength(v){
+    looperLengthKnobVal = v;
+    const seconds = 0.5 + v * 3.5; // 0.5s .. 4s
+    looperLengthValue.textContent = seconds.toFixed(1) + ' с';
+  }
+  function applyLooperMix(v){
+    looperMixKnobVal = v;
+    looperMixValue.textContent = Math.round(v * 150) + '%';
+    if (looperWetGain && audioCtx) looperWetGain.gain.setTargetAtTime(v * 1.5, audioCtx.currentTime, 0.01);
+  }
+  function updateLooperUI(){
+    looperFootswitch.classList.remove('recording', 'engaged');
+    if (looperState === 'recording') looperFootswitch.classList.add('recording');
+    if (looperState === 'playing') looperFootswitch.classList.add('engaged');
+    looperStatus.textContent =
+      looperState === 'recording' ? 'Идёт запись…' :
+      looperState === 'playing' ? 'Играет' :
+      (looperHasContent ? 'Остановлено' : 'Готов к записи');
+  }
+  function looperFootswitchTap(){
+    if (!looperNode) return;
+    if (looperState === 'idle'){
+      if (looperHasContent){
+        looperNode.port.postMessage({ type: 'play' });
+        looperState = 'playing';
+      } else {
+        const seconds = 0.5 + looperLengthKnobVal * 3.5;
+        looperNode.port.postMessage({ type: 'record', seconds });
+        looperState = 'recording';
+      }
+    } else if (looperState === 'recording'){
+      looperNode.port.postMessage({ type: 'stopRecording' });
+      looperState = 'playing';
+      looperHasContent = true;
+    } else if (looperState === 'playing'){
+      looperNode.port.postMessage({ type: 'stop' });
+      looperState = 'idle';
+    }
+    updateLooperUI();
+  }
+  function looperClear(){
+    if (looperNode) looperNode.port.postMessage({ type: 'clear' });
+    looperState = 'idle';
+    looperHasContent = false;
+    updateLooperUI();
+  }
+
+  let patchOrder = ['pitch','dist','comp','delay','reverb','looper'];
 
   function rebuildRouting(){
     if (!audioCtx || !workletNode || !sourceNode) return;
@@ -1127,9 +1282,10 @@
     compSum.disconnect();
     delaySum.disconnect();
     reverbSum.disconnect();
+    looperSum.disconnect();
 
-    const unitInputs = { pitch: workletNode, dist: distInput, comp: compInput, delay: delayInput, reverb: reverbInput };
-    const unitOutputs = { pitch: workletNode, dist: distSum, comp: compSum, delay: delaySum, reverb: reverbSum };
+    const unitInputs = { pitch: workletNode, dist: distInput, comp: compInput, delay: delayInput, reverb: reverbInput, looper: looperInput };
+    const unitOutputs = { pitch: workletNode, dist: distSum, comp: compSum, delay: delaySum, reverb: reverbSum, looper: looperSum };
 
     let prevOut = sourceNode;
     for (const key of patchOrder){
@@ -1139,7 +1295,7 @@
     prevOut.connect(masterGainNode);
   }
 
-  const pedalNames = { pitch:'Питч + Формант', dist:'Дисторшн', comp:'Компрессор', delay:'Дилей', reverb:'Ревербератор' };
+  const pedalNames = { pitch:'Питч + Формант', dist:'Дисторшн', comp:'Компрессор', delay:'Дилей', reverb:'Ревербератор', looper:'Лупер' };
   let pedalBlocks = null;
   let patchListEl = null;
 
@@ -1282,6 +1438,7 @@
   let delayInput=null, delayNode=null, delayFeedbackGain=null, delayDryGain=null, delayWetOutput=null, delaySum=null;
   let reverbInput=null, convolverNode=null, reverbToneFilter=null, reverbDryGain=null, reverbWetOutput=null, reverbSum=null;
   let masterGainNode=null, limiterNode=null;
+  let looperInput=null, looperNode=null, looperDryGain=null, looperWetGain=null, looperSum=null;
   let running=false, rafId=null;
   let currentSemitones = 0;
 
@@ -1406,6 +1563,31 @@
       reverbDryGain.connect(reverbSum);
       reverbWetOutput.connect(reverbSum);
 
+      // --- Looper: records a fixed-length clip and plays it back on loop ---
+      looperInput = audioCtx.createGain();
+      looperNode = new AudioWorkletNode(audioCtx, 'looper');
+      looperNode.port.onmessage = (e)=>{
+        if (e.data && e.data.type === 'autoPlay'){
+          looperState = 'playing';
+          looperHasContent = true;
+          updateLooperUI();
+        }
+      };
+      looperDryGain = audioCtx.createGain();
+      looperDryGain.gain.value = 1;
+      looperWetGain = audioCtx.createGain();
+      looperSum = audioCtx.createGain();
+
+      looperInput.connect(looperDryGain);
+      looperInput.connect(looperNode);
+      looperNode.connect(looperWetGain);
+      looperDryGain.connect(looperSum);
+      looperWetGain.connect(looperSum);
+
+      looperState = 'idle';
+      looperHasContent = false;
+      updateLooperUI();
+
       // --- Master output volume + safety limiter (prevents clipping on boost) ---
       masterGainNode = audioCtx.createGain();
       limiterNode = audioCtx.createDynamicsCompressor();
@@ -1432,6 +1614,7 @@
       applyAttack(attackKnobVal);
       applyDelayTime(delayTimeKnobVal);
       applyDelayFeedback(delayFeedbackKnobVal);
+      applyLooperMix(looperMixKnobVal);
       applyReverbTone(reverbToneKnobVal);
       applyMasterGain(masterKnobVal);
       updateDistDryGain(); updateDistWetGain();
@@ -1469,6 +1652,8 @@
     delayInput=null; delayNode=null; delayFeedbackGain=null; delayDryGain=null; delayWetOutput=null; delaySum=null;
     reverbInput=null; convolverNode=null; reverbToneFilter=null; reverbDryGain=null; reverbWetOutput=null; reverbSum=null;
     masterGainNode=null; limiterNode=null;
+    looperInput=null; looperNode=null; looperDryGain=null; looperWetGain=null; looperSum=null;
+    looperState='idle'; looperHasContent=false; updateLooperUI();
     running=false;
     powerBtn.textContent = 'Включить микрофон';
     powerBtn.classList.remove('on');
@@ -1517,10 +1702,16 @@
     dist: document.getElementById('distPedalBlock'),
     comp: document.getElementById('compPedalBlock'),
     delay: document.getElementById('delayPedalBlock'),
-    reverb: document.getElementById('reverbPedalBlock')
+    reverb: document.getElementById('reverbPedalBlock'),
+    looper: document.getElementById('looperPedalBlock')
   };
   patchListEl = document.getElementById('patchList');
   renderPatchList();
+
+  makeSmallKnob(looperLengthKnob, looperLengthIndicator, ()=>looperLengthKnobVal, applyLooperLength);
+  makeSmallKnob(looperMixKnob, looperMixIndicator, ()=>looperMixKnobVal, applyLooperMix);
+  looperFootswitch.addEventListener('click', looperFootswitchTap);
+  looperClearBtn.addEventListener('click', looperClear);
 
   keyRootSelect.addEventListener('change', e=>{
     keyRootValue = parseInt(e.target.value, 10);
@@ -1576,4 +1767,3 @@
 </script>
 </body>
 </html>
-
