@@ -1054,10 +1054,20 @@
   function generateImpulseResponse(ctx, durationSeconds){
     const rate = ctx.sampleRate;
     const length = Math.max(1, Math.floor(rate * durationSeconds));
-    const buffer = ctx.createBuffer(1, length, rate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < length; i++){
-      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.5);
+    const buffer = ctx.createBuffer(2, length, rate);
+    for (let ch = 0; ch < 2; ch++){
+      const data = buffer.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < length; i++){
+        const t = i / length;
+        const decay = Math.exp(-5.5 * t); // natural exponential tail, not an abrupt cutoff
+        const raw = Math.random() * 2 - 1;
+        // early reflections stay bright; the tail is progressively smoothed/darkened,
+        // which sounds far less harsh/metallic than raw white noise all the way through
+        const a = Math.max(0.02, 0.9 - 0.85 * t);
+        lp = lp + (raw - lp) * a;
+        data[i] = lp * decay;
+      }
     }
     return buffer;
   }
@@ -1067,7 +1077,19 @@
     if (reverbRegenTimer) clearTimeout(reverbRegenTimer);
     reverbRegenTimer = setTimeout(()=>{
       const duration = 0.3 + reverbDecayKnobVal * 3.7;
-      convolverNode.buffer = generateImpulseResponse(audioCtx, duration);
+      const targetWet = reverbEngaged ? reverbMixKnobVal : 0;
+      const now = audioCtx.currentTime;
+      // duck the wet signal briefly so swapping the impulse response mid-stream doesn't click
+      reverbWetOutput.gain.cancelScheduledValues(now);
+      reverbWetOutput.gain.setValueAtTime(reverbWetOutput.gain.value, now);
+      reverbWetOutput.gain.linearRampToValueAtTime(0, now + 0.03);
+      setTimeout(()=>{
+        convolverNode.buffer = generateImpulseResponse(audioCtx, duration);
+        const now2 = audioCtx.currentTime;
+        reverbWetOutput.gain.cancelScheduledValues(now2);
+        reverbWetOutput.gain.setValueAtTime(0, now2);
+        reverbWetOutput.gain.linearRampToValueAtTime(targetWet, now2 + 0.06);
+      }, 40);
     }, 150);
   }
   function applyReverbDecay(v){
@@ -1095,20 +1117,21 @@
     if (masterGainNode && audioCtx) masterGainNode.gain.setTargetAtTime(v * 2, audioCtx.currentTime, 0.01);
   }
 
-  let patchOrder = ['dist','comp','delay','reverb'];
+  let patchOrder = ['pitch','dist','comp','delay','reverb'];
 
   function rebuildRouting(){
-    if (!audioCtx || !workletNode) return;
+    if (!audioCtx || !workletNode || !sourceNode) return;
+    sourceNode.disconnect();
     workletNode.disconnect();
     distSum.disconnect();
     compSum.disconnect();
     delaySum.disconnect();
     reverbSum.disconnect();
 
-    const unitInputs = { dist: distInput, comp: compInput, delay: delayInput, reverb: reverbInput };
-    const unitOutputs = { dist: distSum, comp: compSum, delay: delaySum, reverb: reverbSum };
+    const unitInputs = { pitch: workletNode, dist: distInput, comp: compInput, delay: delayInput, reverb: reverbInput };
+    const unitOutputs = { pitch: workletNode, dist: distSum, comp: compSum, delay: delaySum, reverb: reverbSum };
 
-    let prevOut = workletNode;
+    let prevOut = sourceNode;
     for (const key of patchOrder){
       prevOut.connect(unitInputs[key]);
       prevOut = unitOutputs[key];
@@ -1116,7 +1139,7 @@
     prevOut.connect(masterGainNode);
   }
 
-  const pedalNames = { dist:'Дисторшн', comp:'Компрессор', delay:'Дилей', reverb:'Ревербератор' };
+  const pedalNames = { pitch:'Питч + Формант', dist:'Дисторшн', comp:'Компрессор', delay:'Дилей', reverb:'Ревербератор' };
   let pedalBlocks = null;
   let patchListEl = null;
 
@@ -1146,7 +1169,7 @@
     if (!pedalBlocks) return;
     const anchor = document.querySelector('.master-row');
     patchOrder.forEach(key=>{
-      anchor.parentNode.insertBefore(pedalBlocks[key], anchor);
+      if (pedalBlocks[key]) anchor.parentNode.insertBefore(pedalBlocks[key], anchor);
     });
   }
 
@@ -1307,7 +1330,6 @@
 
       sourceNode = audioCtx.createMediaStreamSource(micStream);
       workletNode = new AudioWorkletNode(audioCtx, 'pitch-shifter');
-      sourceNode.connect(workletNode);
       sendAutotuneState();
       applyFormant(formantKnobVal);
 
@@ -1387,11 +1409,11 @@
       // --- Master output volume + safety limiter (prevents clipping on boost) ---
       masterGainNode = audioCtx.createGain();
       limiterNode = audioCtx.createDynamicsCompressor();
-      limiterNode.threshold.value = -3;
-      limiterNode.knee.value = 0;
-      limiterNode.ratio.value = 20;
-      limiterNode.attack.value = 0.001;
-      limiterNode.release.value = 0.1;
+      limiterNode.threshold.value = -6;
+      limiterNode.knee.value = 6;
+      limiterNode.ratio.value = 12;
+      limiterNode.attack.value = 0.002;
+      limiterNode.release.value = 0.15;
 
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 512;
@@ -1554,3 +1576,4 @@
 </script>
 </body>
 </html>
+
