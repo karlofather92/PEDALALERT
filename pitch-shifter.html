@@ -1,0 +1,1424 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Питч-шифтер</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --panel-a: #38352f;
+    --panel-b: #2a2824;
+    --panel-edge: #4d4a42;
+    --screen-bg: #16140f;
+    --screen-glow: #ffb454;
+    --led-off: #4a3f2e;
+    --led-on: #7fd858;
+    --text-label: #c9c0ab;
+    --text-dim: #8a8271;
+    --danger: #e8734a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{
+    height:100%; margin:0;
+    background: radial-gradient(ellipse at 50% 0%, #26241f 0%, #0f0e0c 70%);
+    font-family:'Oswald', sans-serif;
+    color: var(--text-label);
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+  .rack{
+    width:min(420px, 92vw);
+    max-height:96vh;
+    background: linear-gradient(160deg, var(--panel-a), var(--panel-b));
+    border-radius:22px;
+    padding:22px 22px 26px;
+    box-shadow:
+      0 30px 60px rgba(0,0,0,0.55),
+      inset 0 1px 0 rgba(255,255,255,0.06),
+      inset 0 -2px 0 rgba(0,0,0,0.4);
+    border:1px solid #1c1a16;
+    position:relative;
+    overflow-y:auto;
+  }
+  .screw{
+    position:absolute; width:9px; height:9px; border-radius:50%;
+    background: radial-gradient(circle at 35% 30%, #7a7568, #26241f 70%);
+    box-shadow: inset 0 0 2px #000;
+  }
+  .screw.tl{top:12px; left:12px;} .screw.tr{top:12px; right:12px;}
+  .screw.bl{bottom:12px; left:12px;} .screw.br{bottom:12px; right:12px;}
+
+  .title{
+    text-align:center; margin: 4px 0 18px;
+  }
+  .title h1{
+    margin:0; font-size:18px; font-weight:600; letter-spacing:2px;
+    color:#efe9dc; text-transform:uppercase;
+  }
+  .title p{
+    margin:4px 0 0; font-size:11px; letter-spacing:1.5px; color:var(--text-dim);
+    text-transform:uppercase;
+  }
+
+  .screen{
+    background: var(--screen-bg);
+    border-radius:10px;
+    padding:14px 10px;
+    text-align:center;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.7), inset 0 0 0 1px #000;
+    margin-bottom:20px;
+  }
+  .screen .val{
+    font-family:'JetBrains Mono', monospace;
+    font-size:38px; font-weight:700;
+    color: var(--screen-glow);
+    text-shadow: 0 0 10px rgba(255,180,84,0.55);
+    letter-spacing:2px;
+  }
+  .screen .unit{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px; color: #8a5f2e; letter-spacing:3px; margin-top:2px;
+  }
+
+  .knob-wrap{
+    display:flex; flex-direction:column; align-items:center;
+    margin-bottom:14px;
+  }
+  .knob-outer{
+    width:150px; height:150px; border-radius:50%;
+    background: radial-gradient(circle at 32% 28%, #55503f, #1c1a15 75%);
+    box-shadow:
+      0 10px 20px rgba(0,0,0,0.55),
+      inset 0 2px 3px rgba(255,255,255,0.08),
+      inset 0 -4px 8px rgba(0,0,0,0.6);
+    position:relative;
+    touch-action:none;
+    cursor: grab;
+  }
+  .knob-outer:active{ cursor: grabbing; }
+  .knob-indicator{
+    position:absolute; top:10px; left:50%;
+    width:5px; height:34px; margin-left:-2.5px;
+    background: var(--screen-glow);
+    border-radius:3px;
+    box-shadow: 0 0 6px rgba(255,180,84,0.7);
+    transform-origin: 2.5px 65px;
+  }
+  .knob-ticks{
+    position:absolute; inset:0;
+    pointer-events:none;
+  }
+  .range-labels{
+    display:flex; justify-content:space-between; width:150px;
+    font-family:'JetBrains Mono', monospace; font-size:10px; color:var(--text-dim);
+    margin-top:8px; letter-spacing:1px;
+  }
+  .hint{
+    text-align:center; font-size:10.5px; color:var(--text-dim); margin-top:6px;
+    letter-spacing:0.5px;
+  }
+
+  .pedal{
+    background: rgba(0,0,0,0.18);
+    border:1px solid #1c1a16;
+    border-radius:12px;
+    padding:12px 10px 14px;
+    margin-bottom:12px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .pedal-header{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .pedal-title{
+    font-size:11px; letter-spacing:2px; text-transform:uppercase;
+    color:#dcd3c0; font-weight:600;
+  }
+  .footswitch{
+    width:28px; height:28px; border-radius:50%;
+    background: radial-gradient(circle at 35% 30%, #4a463d, #201e1a 75%);
+    border:1px solid #100f0d;
+    box-shadow: inset 0 1px 2px rgba(255,255,255,0.1), inset 0 -2px 3px rgba(0,0,0,0.6);
+    position:relative; flex-shrink:0;
+  }
+  .footswitch::after{
+    content:''; position:absolute; top:50%; left:50%;
+    width:8px; height:8px; border-radius:50%;
+    transform:translate(-50%,-50%);
+    background: var(--led-off);
+  }
+  .footswitch.engaged::after{
+    background: var(--led-on);
+    box-shadow: 0 0 6px rgba(127,216,88,0.85);
+  }
+  .footswitch:active{ transform: translateY(1px); }
+
+  .knob-row{
+    display:flex; justify-content:space-between; gap:6px;
+  }
+  .fx-module{
+    display:flex; flex-direction:column; align-items:center; flex:1;
+  }
+  .knob-outer.small{
+    width:64px; height:64px;
+  }
+  .knob-outer.small .knob-indicator{
+    height:15px; top:5px;
+    transform-origin: 2.5px 27.5px;
+  }
+  .fx-label{
+    margin-top:7px; font-size:9px; letter-spacing:1px;
+    text-transform:uppercase; color:var(--text-dim);
+  }
+  .fx-value{
+    font-family:'JetBrains Mono', monospace; font-size:11px;
+    color: var(--screen-glow); margin-top:2px; letter-spacing:0.5px;
+  }
+
+  .master-row{
+    display:flex; flex-direction:column; align-items:center;
+    margin-bottom:16px;
+  }
+  .master-row .fx-label{ margin-top:8px; font-size:10px; }
+  .master-row .fx-value{ font-size:13px; }
+
+  .key-row{
+    display:flex; align-items:center; justify-content:center; gap:10px;
+  }
+  .key-select{
+    background: var(--screen-bg); color: var(--screen-glow);
+    border:1px solid #000; border-radius:6px; padding:9px 8px;
+    font-family:'JetBrains Mono', monospace; font-size:13px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.6);
+  }
+  .scale-toggle{ display:flex; gap:4px; }
+  .scale-btn{
+    background: linear-gradient(180deg, #423e35, #322f28);
+    border:1px solid #1e1c18; border-radius:7px;
+    color: var(--text-label); font-family:'Oswald',sans-serif;
+    font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px;
+    padding:9px 12px;
+  }
+  .scale-btn.active{
+    background: linear-gradient(180deg, #7a5a34, #5c4326);
+    color:#ffe6c2; box-shadow: inset 0 0 0 1px rgba(255,180,84,0.5);
+  }
+
+  .switch-row{
+    display:flex; align-items:flex-start; justify-content:space-around;
+    margin-top:12px; gap:8px;
+  }
+  .switch-item{
+    display:flex; flex-direction:column; align-items:center; gap:6px;
+  }
+
+  .fader-row{
+    display:flex; justify-content:center; gap:44px;
+    margin-bottom:16px;
+  }
+  .fader-module{
+    display:flex; flex-direction:column; align-items:center;
+  }
+  .fader-track{
+    position:relative; width:46px; height:180px;
+    background: var(--screen-bg); border-radius:8px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.7), inset 0 0 0 1px #000;
+    touch-action:none;
+  }
+  .fader-groove{
+    position:absolute; left:50%; top:10px; bottom:10px; width:4px;
+    margin-left:-2px; background:#000; border-radius:2px;
+    box-shadow: inset 0 0 3px rgba(0,0,0,0.9);
+  }
+  .fader-cap{
+    position:absolute; left:50%; width:54px; height:24px;
+    margin-left:-27px;
+    border-radius:5px;
+    background: linear-gradient(180deg, #55503f, #1c1a15);
+    box-shadow: 0 3px 5px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.14);
+    cursor: grab;
+  }
+  .fader-cap-line{
+    position:absolute; left:5px; right:5px; top:50%; height:2px;
+    margin-top:-1px; background: var(--screen-glow);
+    box-shadow: 0 0 5px rgba(255,180,84,0.7);
+  }
+  .fader-label{
+    margin-top:10px; font-size:10px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--text-dim);
+  }
+  .fader-value{
+    font-family:'JetBrains Mono', monospace; font-size:12px;
+    color: var(--screen-glow); margin-top:2px; letter-spacing:0.5px;
+  }
+  .fader-scale{
+    display:flex; flex-direction:column; justify-content:space-between;
+    height:180px; font-family:'JetBrains Mono', monospace;
+    font-size:9px; color:var(--text-dim); margin-right:6px;
+  }
+
+  .presets{
+    display:grid; grid-template-columns: repeat(5,1fr); gap:6px;
+    margin: 18px 0 16px;
+  }
+  .preset-btn{
+    background: linear-gradient(180deg, #423e35, #322f28);
+    border:1px solid #1e1c18;
+    border-radius:7px;
+    color: var(--text-label);
+    font-family:'Oswald', sans-serif;
+    font-size:9.5px; text-transform:uppercase; letter-spacing:0.5px;
+    padding:9px 2px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 3px rgba(0,0,0,0.3);
+  }
+  .preset-btn:active{
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+    transform: translateY(1px);
+  }
+
+  .meter-row{
+    display:flex; align-items:center; gap:10px;
+    margin-bottom:18px;
+    background: var(--screen-bg);
+    border-radius:8px; padding:10px 12px;
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.6);
+  }
+  .signal-dot{
+    width:9px; height:9px; border-radius:50%;
+    background: var(--led-off);
+    flex-shrink:0;
+    transition: background 60ms linear, box-shadow 60ms linear;
+  }
+  .signal-dot.live{
+    background: var(--led-on);
+    box-shadow: 0 0 6px rgba(127,216,88,0.8);
+  }
+  .meter{
+    display:flex; gap:3px; flex:1; height:14px;
+  }
+  .meter i{
+    flex:1; border-radius:2px; background: var(--led-off);
+  }
+  .meter i.on{ background: var(--led-on); box-shadow:0 0 5px rgba(127,216,88,0.6); }
+  .meter i.hot{ background: var(--danger); box-shadow:0 0 5px rgba(232,115,74,0.7); }
+
+  .power-btn{
+    width:100%;
+    padding:16px 0;
+    border-radius:12px;
+    border:none;
+    font-family:'Oswald', sans-serif;
+    font-size:14px; font-weight:600; letter-spacing:2px; text-transform:uppercase;
+    background: linear-gradient(180deg, #d97a3f, #b8592b);
+    color:#fff8ee;
+    box-shadow: 0 4px 0 #7a3d1c, 0 8px 16px rgba(0,0,0,0.4);
+  }
+  .power-btn.on{
+    background: linear-gradient(180deg, #6fae4a, #4f8a34);
+    box-shadow: 0 4px 0 #2f5a1e, 0 8px 16px rgba(0,0,0,0.4);
+  }
+  .power-btn:active{
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #7a3d1c, 0 4px 10px rgba(0,0,0,0.4);
+  }
+  .power-btn.on:active{
+    box-shadow: 0 1px 0 #2f5a1e, 0 4px 10px rgba(0,0,0,0.4);
+  }
+
+  .warn{
+    text-align:center; font-size:11px; color:var(--text-dim);
+    margin-top:12px; line-height:1.5;
+  }
+  .warn b{ color:#d8a06a; }
+
+  .error-box{
+    display:none;
+    margin-top:12px;
+    background: rgba(232,115,74,0.12);
+    border:1px solid rgba(232,115,74,0.4);
+    color:#f0b294;
+    font-size:11.5px; line-height:1.5;
+    padding:10px 12px; border-radius:8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="rack">
+  <div class="screw tl"></div><div class="screw tr"></div>
+  <div class="screw bl"></div><div class="screw br"></div>
+
+  <div class="title">
+    <h1>Питч-шифтер</h1>
+    <p>Голос · реальное время</p>
+  </div>
+
+  <div class="screen">
+    <div class="val" id="readout">0.0</div>
+    <div class="unit">ПОЛУТОНОВ</div>
+  </div>
+
+  <div class="fader-row">
+    <div class="fader-module">
+      <div class="fader-scale"><span>+24</span><span>0</span><span>−24</span></div>
+      <div class="fader-track" id="pitchTrack">
+        <div class="fader-groove"></div>
+        <div class="fader-cap" id="pitchCap"><div class="fader-cap-line"></div></div>
+      </div>
+      <div class="fader-label">Питч</div>
+    </div>
+    <div class="fader-module">
+      <div class="fader-track" id="formantTrack">
+        <div class="fader-groove"></div>
+        <div class="fader-cap" id="formantCap"><div class="fader-cap-line"></div></div>
+      </div>
+      <div class="fader-label">Формант</div>
+      <div class="fader-value" id="formantValue">0%</div>
+    </div>
+  </div>
+  <div class="hint" style="margin-top:-8px; margin-bottom:14px;">тяни или коснись дорожки</div>
+
+  <div class="pedal">
+    <div class="pedal-header">
+      <div class="pedal-title">Тональность</div>
+    </div>
+    <div class="key-row">
+      <select id="keyRootSelect" class="key-select">
+        <option value="0">До</option>
+        <option value="1">До#</option>
+        <option value="2">Ре</option>
+        <option value="3">Ре#</option>
+        <option value="4">Ми</option>
+        <option value="5">Фа</option>
+        <option value="6">Фа#</option>
+        <option value="7">Соль</option>
+        <option value="8">Соль#</option>
+        <option value="9">Ля</option>
+        <option value="10">Ля#</option>
+        <option value="11">Си</option>
+      </select>
+      <div class="scale-toggle">
+        <button class="scale-btn active" id="majorBtn">Мажор</button>
+        <button class="scale-btn" id="minorBtn">Минор</button>
+      </div>
+    </div>
+    <div class="switch-row">
+      <div class="switch-item">
+        <div class="footswitch" id="quantFootswitch"></div>
+        <div class="fx-label">Квантайзер</div>
+      </div>
+      <div class="switch-item">
+        <div class="footswitch" id="autotuneFootswitch"></div>
+        <div class="fx-label">Автотюн</div>
+      </div>
+      <div class="fx-module" style="flex:none;">
+        <div class="knob-outer small" id="autotuneSpeedKnob"><div class="knob-indicator" id="autotuneSpeedIndicator"></div></div>
+        <div class="fx-label">Скорость</div>
+        <div class="fx-value" id="autotuneSpeedValue">50%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pedal">
+    <div class="pedal-header">
+      <div class="pedal-title">Дисторшн</div>
+      <div class="footswitch engaged" id="distFootswitch"></div>
+    </div>
+    <div class="knob-row">
+      <div class="fx-module">
+        <div class="knob-outer small" id="driveKnob"><div class="knob-indicator" id="driveIndicator"></div></div>
+        <div class="fx-label">Драйв</div>
+        <div class="fx-value" id="driveValue">0%</div>
+      </div>
+      <div class="fx-module">
+        <div class="knob-outer small" id="toneKnob"><div class="knob-indicator" id="toneIndicator"></div></div>
+        <div class="fx-label">Тон</div>
+        <div class="fx-value" id="toneValue">50%</div>
+      </div>
+      <div class="fx-module">
+        <div class="knob-outer small" id="distLevelKnob"><div class="knob-indicator" id="distLevelIndicator"></div></div>
+        <div class="fx-label">Уровень</div>
+        <div class="fx-value" id="distLevelValue">100%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pedal">
+    <div class="pedal-header">
+      <div class="pedal-title">Компрессор</div>
+      <div class="footswitch engaged" id="compFootswitch"></div>
+    </div>
+    <div class="knob-row">
+      <div class="fx-module">
+        <div class="knob-outer small" id="sustainKnob"><div class="knob-indicator" id="sustainIndicator"></div></div>
+        <div class="fx-label">Сустейн</div>
+        <div class="fx-value" id="sustainValue">30%</div>
+      </div>
+      <div class="fx-module">
+        <div class="knob-outer small" id="attackKnob"><div class="knob-indicator" id="attackIndicator"></div></div>
+        <div class="fx-label">Атака</div>
+        <div class="fx-value" id="attackValue">3 мс</div>
+      </div>
+      <div class="fx-module">
+        <div class="knob-outer small" id="compLevelKnob"><div class="knob-indicator" id="compLevelIndicator"></div></div>
+        <div class="fx-label">Уровень</div>
+        <div class="fx-value" id="compLevelValue">100%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pedal">
+    <div class="pedal-header">
+      <div class="pedal-title">Дилей</div>
+      <div class="footswitch engaged" id="delayFootswitch"></div>
+    </div>
+    <div class="knob-row">
+      <div class="fx-module">
+        <div class="knob-outer small" id="delayTimeKnob"><div class="knob-indicator" id="delayTimeIndicator"></div></div>
+        <div class="fx-label">Тайм</div>
+        <div class="fx-value" id="delayTimeValue">120 мс</div>
+      </div>
+      <div class="fx-module">
+        <div class="knob-outer small" id="delayFeedbackKnob"><div class="knob-indicator" id="delayFeedbackIndicator"></div></div>
+        <div class="fx-label">Повторы</div>
+        <div class="fx-value" id="delayFeedbackValue">30%</div>
+      </div>
+      <div class="fx-module">
+        <div class="knob-outer small" id="delayLevelKnob"><div class="knob-indicator" id="delayLevelIndicator"></div></div>
+        <div class="fx-label">Микс</div>
+        <div class="fx-value" id="delayLevelValue">30%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pedal">
+    <div class="pedal-header">
+      <div class="pedal-title">Ревербератор</div>
+      <div class="footswitch engaged" id="reverbFootswitch"></div>
+    </div>
+    <div class="knob-row">
+      <div class="fx-module">
+        <div class="knob-outer small" id="reverbDecayKnob"><div class="knob-indicator" id="reverbDecayIndicator"></div></div>
+        <div class="fx-label">Хвост</div>
+        <div class="fx-value" id="reverbDecayValue">1.4 с</div>
+      </div>
+      <div class="fx-module">
+        <div class="knob-outer small" id="reverbToneKnob"><div class="knob-indicator" id="reverbToneIndicator"></div></div>
+        <div class="fx-label">Тон</div>
+        <div class="fx-value" id="reverbToneValue">50%</div>
+      </div>
+      <div class="fx-module">
+        <div class="knob-outer small" id="reverbMixKnob"><div class="knob-indicator" id="reverbMixIndicator"></div></div>
+        <div class="fx-label">Микс</div>
+        <div class="fx-value" id="reverbMixValue">25%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="master-row">
+    <div class="knob-outer small" id="masterKnob"><div class="knob-indicator" id="masterIndicator"></div></div>
+    <div class="fx-label">Выходная громкость</div>
+    <div class="fx-value" id="masterValue">100%</div>
+  </div>
+
+  <div class="presets">
+    <button class="preset-btn" data-semi="-24">Демон</button>
+    <button class="preset-btn" data-semi="-12">Робот</button>
+    <button class="preset-btn" data-semi="0">Сброс</button>
+    <button class="preset-btn" data-semi="12">Эльф</button>
+    <button class="preset-btn" data-semi="24">Бурундук</button>
+  </div>
+
+  <div class="meter-row">
+    <div class="signal-dot" id="signalDot"></div>
+    <div class="meter" id="meter"></div>
+  </div>
+
+  <button class="power-btn" id="powerBtn">Включить микрофон</button>
+
+  <div class="warn"><b>Совет:</b> используйте наушники — без них звук с динамика может попасть обратно в микрофон и дать свист.</div>
+  <div class="error-box" id="errorBox"></div>
+</div>
+
+<script>
+(function(){
+  const workletCode = `
+    class PitchShifterProcessor extends AudioWorkletProcessor {
+      static get parameterDescriptors() {
+        return [{ name: 'pitchRatio', defaultValue: 1, minValue: 0.1, maxValue: 8, automationRate: 'k-rate' }];
+      }
+      constructor() {
+        super();
+        this.bufferSize = Math.floor(sampleRate * 2);
+        this.buffer = new Float32Array(this.bufferSize);
+        this.writeIndex = 0;
+        this.grainSize = Math.max(64, Math.floor(sampleRate * 0.05));
+        this.window = new Float32Array(this.grainSize);
+        for (let i = 0; i < this.grainSize; i++) {
+          this.window[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / this.grainSize);
+        }
+        this.phaseA = 0;
+        this.phaseB = Math.floor(this.grainSize / 2);
+        this.readPosA = 0;
+        this.readPosB = 0;
+
+        // --- autotune state ---
+        this.autotuneEnabled = false;
+        this.keyRoot = 0;
+        this.scaleMask = new Array(12).fill(true);
+        this.smoothAlpha = 0.02;
+        this.correctionRatio = 1;
+        this.targetCorrectionRatio = 1;
+        this.detectN = 1024;
+        this.detectCounter = 0;
+        this.minLag = Math.floor(sampleRate / 500);
+        this.maxLag = Math.floor(sampleRate / 90);
+
+        this.port.onmessage = (e) => {
+          const d = e.data;
+          if (!d) return;
+          if (d.type === 'autotune') {
+            this.autotuneEnabled = !!d.enabled;
+            this.keyRoot = (d.keyRoot | 0) % 12;
+            if (Array.isArray(d.intervals)) {
+              this.scaleMask = new Array(12).fill(false);
+              for (const iv of d.intervals) this.scaleMask[((iv % 12) + 12) % 12] = true;
+            }
+            const speed = Math.max(0, Math.min(1, d.speed));
+            const tc = 0.003 + (1 - speed) * 0.25;
+            this.smoothAlpha = Math.min(1, 1 / (tc * sampleRate));
+          } else if (d.type === 'formant') {
+            this.formantAmount = Math.max(0, Math.min(1, d.amount));
+          }
+        };
+
+        // --- formant (LPC source-filter) state ---
+        this.formantAmount = 0;
+        this.lpcOrder = 20;
+        this.lpcCoeffs = new Float32Array(this.lpcOrder);
+        this.lpcFrameSize = 512;
+        this.lpcHopCounter = 0;
+        this.lpcWindow = new Float32Array(this.lpcFrameSize);
+        for (let i = 0; i < this.lpcFrameSize; i++) {
+          this.lpcWindow[i] = 0.54 - 0.46 * Math.cos((2 * Math.PI * i) / (this.lpcFrameSize - 1));
+        }
+        this.residualBuffer = new Float32Array(this.bufferSize);
+        this.synthHistory = new Float32Array(this.lpcOrder);
+      }
+      computeLPC() {
+        const N = this.lpcFrameSize;
+        const B = this.bufferSize;
+        const start = this.writeIndex - N;
+        const frame = new Float32Array(N);
+        for (let i = 0; i < N; i++) {
+          let idx = (start + i) % B; if (idx < 0) idx += B;
+          frame[i] = this.buffer[idx] * this.lpcWindow[i];
+        }
+        const p = this.lpcOrder;
+        const R = new Float32Array(p + 1);
+        for (let k = 0; k <= p; k++) {
+          let sum = 0;
+          for (let i = 0; i < N - k; i++) sum += frame[i] * frame[i + k];
+          R[k] = sum;
+        }
+        R[0] *= 1.0001;
+        if (R[0] < 1e-9) return;
+
+        const a = new Float32Array(p + 1);
+        const tmp = new Float32Array(p + 1);
+        a[0] = 1;
+        let err = R[0];
+        for (let i = 1; i <= p; i++) {
+          let acc = R[i];
+          for (let j = 1; j < i; j++) acc += a[j] * R[i - j];
+          const k = -acc / err;
+          for (let j = 0; j <= i; j++) tmp[j] = a[j];
+          for (let j = 1; j < i; j++) a[j] = tmp[j] + k * tmp[i - j];
+          a[i] = k;
+          err *= (1 - k * k);
+          if (err <= 0) err = 1e-9;
+        }
+        for (let i = 0; i < p; i++) this.lpcCoeffs[i] = a[i + 1];
+      }
+      readAt(buf, pos) {
+        const N = this.bufferSize;
+        let p = pos % N;
+        if (p < 0) p += N;
+        const i0 = Math.floor(p);
+        const i1 = (i0 + 1) % N;
+        const frac = p - i0;
+        return buf[i0] + frac * (buf[i1] - buf[i0]);
+      }
+      process(inputs, outputs, parameters) {
+        const input = inputs[0][0];
+        const output = outputs[0][0];
+        if (!input || !output) return true;
+        const baseRatio = parameters.pitchRatio[0];
+        const N = this.grainSize;
+        const B = this.bufferSize;
+        const p = this.lpcOrder;
+        for (let i = 0; i < input.length; i++) {
+          this.buffer[this.writeIndex] = input[i];
+
+          // whitening filter: residual[n] = x[n] + sum(a[k]*x[n-k]) using current LPC coeffs
+          let resid = this.buffer[this.writeIndex];
+          for (let k = 0; k < p; k++) {
+            let idx = this.writeIndex - (k + 1); idx %= B; if (idx < 0) idx += B;
+            resid += this.lpcCoeffs[k] * this.buffer[idx];
+          }
+          this.residualBuffer[this.writeIndex] = resid;
+
+          this.lpcHopCounter++;
+          if (this.lpcHopCounter >= this.lpcFrameSize) {
+            this.lpcHopCounter = 0;
+            this.computeLPC();
+          }
+
+          if (this.autotuneEnabled) {
+            this.detectCounter++;
+            if (this.detectCounter >= this.detectN) {
+              this.detectCounter = 0;
+              this.detectPitch();
+            }
+            this.correctionRatio += (this.targetCorrectionRatio - this.correctionRatio) * this.smoothAlpha;
+          } else {
+            this.correctionRatio += (1 - this.correctionRatio) * 0.001;
+          }
+          const ratio = baseRatio * this.correctionRatio;
+
+          if (this.phaseA === 0) this.readPosA = this.writeIndex - N;
+          const wA = this.window[this.phaseA];
+          const rawA = this.readAt(this.buffer, this.readPosA) * wA;
+          const residA = this.readAt(this.residualBuffer, this.readPosA) * wA;
+          this.readPosA += ratio;
+          this.phaseA++;
+          if (this.phaseA >= N) this.phaseA = 0;
+
+          if (this.phaseB === 0) this.readPosB = this.writeIndex - N;
+          const wB = this.window[this.phaseB];
+          const rawB = this.readAt(this.buffer, this.readPosB) * wB;
+          const residB = this.readAt(this.residualBuffer, this.readPosB) * wB;
+          this.readPosB += ratio;
+          this.phaseB++;
+          if (this.phaseB >= N) this.phaseB = 0;
+
+          const rawOut = rawA + rawB;
+          const residOut = residA + residB;
+
+          // synthesis filter: reapply original formant envelope to the pitch-shifted residual
+          let fb = 0;
+          for (let k = 0; k < p; k++) fb += this.lpcCoeffs[k] * this.synthHistory[k];
+          let ySample = residOut - fb;
+          if (!isFinite(ySample) || Math.abs(ySample) > 8) {
+            ySample = 0;
+            this.synthHistory.fill(0);
+          }
+          for (let k = p - 1; k > 0; k--) this.synthHistory[k] = this.synthHistory[k - 1];
+          this.synthHistory[0] = ySample;
+
+          output[i] = rawOut * (1 - this.formantAmount) + ySample * this.formantAmount;
+          this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
+        }
+        return true;
+      }
+      detectPitch() {
+        const N = this.detectN;
+        const B = this.bufferSize;
+        const start = this.writeIndex - N;
+        let rms = 0;
+        for (let i = 0; i < N; i++) {
+          let idx = (start + i) % B; if (idx < 0) idx += B;
+          const v = this.buffer[idx];
+          rms += v * v;
+        }
+        rms = Math.sqrt(rms / N);
+        if (rms < 0.015) { this.targetCorrectionRatio = 1; return; }
+
+        let bestLag = -1, bestCorr = 0;
+        for (let lag = this.minLag; lag <= this.maxLag; lag++) {
+          let sum = 0;
+          for (let i = 0; i < N - lag; i += 4) {
+            let ia = (start + i) % B; if (ia < 0) ia += B;
+            let ib = (start + i + lag) % B; if (ib < 0) ib += B;
+            sum += this.buffer[ia] * this.buffer[ib];
+          }
+          if (sum > bestCorr) { bestCorr = sum; bestLag = lag; }
+        }
+        if (bestLag <= 0) return;
+
+        const freq = sampleRate / bestLag;
+        const midi = 69 + 12 * Math.log2(freq / 440);
+        const rounded = Math.round(midi);
+        const pitchClass = ((rounded - this.keyRoot) % 12 + 12) % 12;
+        let bestDelta = null;
+        for (let d = 0; d <= 6; d++) {
+          if (this.scaleMask[(pitchClass + d) % 12]) { bestDelta = d; break; }
+          if (this.scaleMask[(pitchClass - d + 12) % 12]) { bestDelta = -d; break; }
+        }
+        if (bestDelta === null) bestDelta = 0;
+        const targetMidi = rounded + bestDelta;
+        this.targetCorrectionRatio = Math.pow(2, (targetMidi - midi) / 12);
+      }
+    }
+    registerProcessor('pitch-shifter', PitchShifterProcessor);
+  `;
+
+  const pitchTrack = document.getElementById('pitchTrack');
+  const pitchCap = document.getElementById('pitchCap');
+  const formantTrack = document.getElementById('formantTrack');
+  const formantCap = document.getElementById('formantCap');
+  const formantValue = document.getElementById('formantValue');
+  const readout = document.getElementById('readout');
+  const powerBtn = document.getElementById('powerBtn');
+  const errorBox = document.getElementById('errorBox');
+  const signalDot = document.getElementById('signalDot');
+  const meterEl = document.getElementById('meter');
+
+  const driveKnob = document.getElementById('driveKnob');
+  const driveIndicator = document.getElementById('driveIndicator');
+  const driveValue = document.getElementById('driveValue');
+  const toneKnob = document.getElementById('toneKnob');
+  const toneIndicator = document.getElementById('toneIndicator');
+  const toneValue = document.getElementById('toneValue');
+  const distLevelKnob = document.getElementById('distLevelKnob');
+  const distLevelIndicator = document.getElementById('distLevelIndicator');
+  const distLevelValue = document.getElementById('distLevelValue');
+  const distFootswitch = document.getElementById('distFootswitch');
+
+  const sustainKnob = document.getElementById('sustainKnob');
+  const sustainIndicator = document.getElementById('sustainIndicator');
+  const sustainValue = document.getElementById('sustainValue');
+  const attackKnob = document.getElementById('attackKnob');
+  const attackIndicator = document.getElementById('attackIndicator');
+  const attackValue = document.getElementById('attackValue');
+  const compLevelKnob = document.getElementById('compLevelKnob');
+  const compLevelIndicator = document.getElementById('compLevelIndicator');
+  const compLevelValue = document.getElementById('compLevelValue');
+  const compFootswitch = document.getElementById('compFootswitch');
+
+  const delayTimeKnob = document.getElementById('delayTimeKnob');
+  const delayTimeIndicator = document.getElementById('delayTimeIndicator');
+  const delayTimeValue = document.getElementById('delayTimeValue');
+  const delayFeedbackKnob = document.getElementById('delayFeedbackKnob');
+  const delayFeedbackIndicator = document.getElementById('delayFeedbackIndicator');
+  const delayFeedbackValue = document.getElementById('delayFeedbackValue');
+  const delayLevelKnob = document.getElementById('delayLevelKnob');
+  const delayLevelIndicator = document.getElementById('delayLevelIndicator');
+  const delayLevelValue = document.getElementById('delayLevelValue');
+  const delayFootswitch = document.getElementById('delayFootswitch');
+
+  const masterKnob = document.getElementById('masterKnob');
+  const masterIndicator = document.getElementById('masterIndicator');
+  const masterValue = document.getElementById('masterValue');
+
+  const keyRootSelect = document.getElementById('keyRootSelect');
+  const majorBtn = document.getElementById('majorBtn');
+  const minorBtn = document.getElementById('minorBtn');
+  const quantFootswitch = document.getElementById('quantFootswitch');
+  const autotuneFootswitch = document.getElementById('autotuneFootswitch');
+  const autotuneSpeedKnob = document.getElementById('autotuneSpeedKnob');
+  const autotuneSpeedIndicator = document.getElementById('autotuneSpeedIndicator');
+  const autotuneSpeedValue = document.getElementById('autotuneSpeedValue');
+
+  const reverbDecayKnob = document.getElementById('reverbDecayKnob');
+  const reverbDecayIndicator = document.getElementById('reverbDecayIndicator');
+  const reverbDecayValue = document.getElementById('reverbDecayValue');
+  const reverbToneKnob = document.getElementById('reverbToneKnob');
+  const reverbToneIndicator = document.getElementById('reverbToneIndicator');
+  const reverbToneValue = document.getElementById('reverbToneValue');
+  const reverbMixKnob = document.getElementById('reverbMixKnob');
+  const reverbMixIndicator = document.getElementById('reverbMixIndicator');
+  const reverbMixValue = document.getElementById('reverbMixValue');
+  const reverbFootswitch = document.getElementById('reverbFootswitch');
+
+  const MAJOR_INTERVALS = [0,2,4,5,7,9,11];
+  const MINOR_INTERVALS = [0,2,3,5,7,8,10];
+  let keyRootValue = 0;
+  let scaleType = 'major';
+  let quantizeEnabled = false;
+  let autotuneEnabled = false;
+  let autotuneSpeedKnobVal = 0.5;
+
+  function sendAutotuneState(){
+    if (!workletNode) return;
+    const intervals = scaleType === 'minor' ? MINOR_INTERVALS : MAJOR_INTERVALS;
+    workletNode.port.postMessage({
+      type: 'autotune',
+      enabled: autotuneEnabled,
+      keyRoot: keyRootValue,
+      intervals: intervals,
+      speed: autotuneSpeedKnobVal
+    });
+  }
+  function applyAutotuneSpeed(v){
+    autotuneSpeedKnobVal = v;
+    autotuneSpeedValue.textContent = Math.round(v * 100) + '%';
+    sendAutotuneState();
+  }
+  function toggleAutotune(){
+    autotuneEnabled = !autotuneEnabled;
+    autotuneFootswitch.classList.toggle('engaged', autotuneEnabled);
+    sendAutotuneState();
+  }
+
+  let formantKnobVal = 0;
+  function applyFormant(v){
+    formantKnobVal = v;
+    formantValue.textContent = Math.round(v * 100) + '%';
+    if (workletNode) workletNode.port.postMessage({ type: 'formant', amount: v });
+  }
+
+  function nearestScaleSemitone(semi){
+    const intervals = scaleType === 'minor' ? MINOR_INTERVALS : MAJOR_INTERVALS;
+    const base = Math.round(semi);
+    let best = base, bestDist = Infinity;
+    for (let candidate = base - 7; candidate <= base + 7; candidate++){
+      const pc = ((candidate - keyRootValue) % 12 + 12) % 12;
+      if (intervals.indexOf(pc) !== -1){
+        const dist = Math.abs(candidate - semi);
+        if (dist < bestDist){ bestDist = dist; best = candidate; }
+      }
+    }
+    return best;
+  }
+
+  // knob positions, 0..1 each
+  let driveKnobVal = 0, toneKnobVal = 0.5, distLevelKnobVal = 0.667;
+  let sustainKnobVal = 0.3, attackKnobVal = 0.04, compLevelKnobVal = 0.667;
+  let delayTimeKnobVal = 0.46, delayFeedbackKnobVal = 0.3, delayLevelKnobVal = 0.3;
+  let reverbDecayKnobVal = 0.3, reverbToneKnobVal = 0.5, reverbMixKnobVal = 0.25;
+  let masterKnobVal = 0.5;
+  let distEngaged = true, compEngaged = true, delayEngaged = true, reverbEngaged = true;
+
+  function makeDistortionCurve(driveNorm){
+    const n = 1024;
+    const curve = new Float32Array(n);
+    const gain = 1 + driveNorm * 24;
+    const norm = Math.tanh(gain) || 1;
+    for (let i = 0; i < n; i++){
+      const x = i * 2 / n - 1;
+      const shaped = Math.tanh(gain * x) / norm;
+      curve[i] = (1 - driveNorm) * x + driveNorm * shaped;
+    }
+    return curve;
+  }
+
+  function updateDistWetGain(){
+    if (!distWetOutput) return;
+    distWetOutput.gain.setTargetAtTime(distEngaged ? distLevelKnobVal * 1.5 : 0, audioCtx.currentTime, 0.01);
+  }
+  function updateDistDryGain(){
+    if (!distDryGain) return;
+    distDryGain.gain.setTargetAtTime(distEngaged ? 0 : 1, audioCtx.currentTime, 0.01);
+  }
+  function updateCompWetGain(){
+    if (!compWetOutput) return;
+    compWetOutput.gain.setTargetAtTime(compEngaged ? compLevelKnobVal * 1.5 : 0, audioCtx.currentTime, 0.01);
+  }
+  function updateCompDryGain(){
+    if (!compDryGain) return;
+    compDryGain.gain.setTargetAtTime(compEngaged ? 0 : 1, audioCtx.currentTime, 0.01);
+  }
+  function updateDelayWetGain(){
+    if (!delayWetOutput) return;
+    delayWetOutput.gain.setTargetAtTime(delayEngaged ? delayLevelKnobVal : 0, audioCtx.currentTime, 0.01);
+  }
+  function updateDelayDryGain(){
+    if (!delayDryGain) return;
+    delayDryGain.gain.setTargetAtTime(delayEngaged ? 0 : 1, audioCtx.currentTime, 0.01);
+  }
+  function updateReverbWetGain(){
+    if (!reverbWetOutput) return;
+    reverbWetOutput.gain.setTargetAtTime(reverbEngaged ? reverbMixKnobVal : 0, audioCtx.currentTime, 0.01);
+  }
+  function updateReverbDryGain(){
+    if (!reverbDryGain) return;
+    reverbDryGain.gain.setTargetAtTime(reverbEngaged ? 0 : 1, audioCtx.currentTime, 0.01);
+  }
+
+  function applyDrive(v){
+    driveKnobVal = v;
+    driveValue.textContent = Math.round(v * 100) + '%';
+    if (distortionNode) distortionNode.curve = makeDistortionCurve(v);
+  }
+  function applyTone(v){
+    toneKnobVal = v;
+    toneValue.textContent = Math.round(v * 100) + '%';
+    if (toneFilter && audioCtx){
+      const freq = 400 * Math.pow(20, v); // ~400Hz .. 8000Hz
+      toneFilter.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.01);
+    }
+  }
+  function applyDistLevel(v){
+    distLevelKnobVal = v;
+    distLevelValue.textContent = Math.round(v * 150) + '%';
+    updateDistWetGain();
+  }
+  function applySustain(v){
+    sustainKnobVal = v;
+    sustainValue.textContent = Math.round(v * 100) + '%';
+    if (compressorNode && audioCtx){
+      const now = audioCtx.currentTime;
+      compressorNode.threshold.setTargetAtTime(0 - v * 40, now, 0.01);
+      compressorNode.ratio.setTargetAtTime(1 + v * 19, now, 0.01);
+      compressorNode.knee.setTargetAtTime(30 - v * 20, now, 0.01);
+    }
+  }
+  function applyAttack(v){
+    attackKnobVal = v;
+    const ms = 1 + v * 50; // 1..51 ms
+    attackValue.textContent = Math.round(ms) + ' мс';
+    if (compressorNode) compressorNode.attack.setTargetAtTime(ms/1000, audioCtx.currentTime, 0.01);
+  }
+  function applyCompLevel(v){
+    compLevelKnobVal = v;
+    compLevelValue.textContent = Math.round(v * 150) + '%';
+    updateCompWetGain();
+  }
+
+  function applyDelayTime(v){
+    delayTimeKnobVal = v;
+    const seconds = 0.02 * Math.pow(50, v); // 20ms .. 1000ms
+    delayTimeValue.textContent = Math.round(seconds * 1000) + ' мс';
+    if (delayNode && audioCtx) delayNode.delayTime.setTargetAtTime(seconds, audioCtx.currentTime, 0.01);
+  }
+  function applyDelayFeedback(v){
+    delayFeedbackKnobVal = v;
+    delayFeedbackValue.textContent = Math.round(v * 100) + '%';
+    if (delayFeedbackGain && audioCtx) delayFeedbackGain.gain.setTargetAtTime(v * 0.9, audioCtx.currentTime, 0.01);
+  }
+  function applyDelayLevel(v){
+    delayLevelKnobVal = v;
+    delayLevelValue.textContent = Math.round(v * 100) + '%';
+    updateDelayWetGain();
+  }
+
+  function generateImpulseResponse(ctx, durationSeconds){
+    const rate = ctx.sampleRate;
+    const length = Math.max(1, Math.floor(rate * durationSeconds));
+    const buffer = ctx.createBuffer(1, length, rate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < length; i++){
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.5);
+    }
+    return buffer;
+  }
+  let reverbRegenTimer = null;
+  function scheduleReverbRegen(){
+    if (!audioCtx || !convolverNode) return;
+    if (reverbRegenTimer) clearTimeout(reverbRegenTimer);
+    reverbRegenTimer = setTimeout(()=>{
+      const duration = 0.3 + reverbDecayKnobVal * 3.7;
+      convolverNode.buffer = generateImpulseResponse(audioCtx, duration);
+    }, 150);
+  }
+  function applyReverbDecay(v){
+    reverbDecayKnobVal = v;
+    const seconds = 0.3 + v * 3.7;
+    reverbDecayValue.textContent = seconds.toFixed(1) + ' с';
+    scheduleReverbRegen();
+  }
+  function applyReverbTone(v){
+    reverbToneKnobVal = v;
+    reverbToneValue.textContent = Math.round(v * 100) + '%';
+    if (reverbToneFilter && audioCtx){
+      const freq = 800 * Math.pow(12.5, v); // ~800Hz .. 10kHz
+      reverbToneFilter.frequency.setTargetAtTime(freq, audioCtx.currentTime, 0.01);
+    }
+  }
+  function applyReverbMix(v){
+    reverbMixKnobVal = v;
+    reverbMixValue.textContent = Math.round(v * 100) + '%';
+    updateReverbWetGain();
+  }
+  function applyMasterGain(v){
+    masterKnobVal = v;
+    masterValue.textContent = Math.round(v * 200) + '%';
+    if (masterGainNode && audioCtx) masterGainNode.gain.setTargetAtTime(v * 2, audioCtx.currentTime, 0.01);
+  }
+
+  function toggleDistBypass(){
+    distEngaged = !distEngaged;
+    distFootswitch.classList.toggle('engaged', distEngaged);
+    updateDistWetGain();
+    updateDistDryGain();
+  }
+  function toggleCompBypass(){
+    compEngaged = !compEngaged;
+    compFootswitch.classList.toggle('engaged', compEngaged);
+    updateCompWetGain();
+    updateCompDryGain();
+  }
+  function toggleDelayBypass(){
+    delayEngaged = !delayEngaged;
+    delayFootswitch.classList.toggle('engaged', delayEngaged);
+    updateDelayWetGain();
+    updateDelayDryGain();
+  }
+  function toggleReverbBypass(){
+    reverbEngaged = !reverbEngaged;
+    reverbFootswitch.classList.toggle('engaged', reverbEngaged);
+    updateReverbWetGain();
+    updateReverbDryGain();
+  }
+
+  function makeSmallKnob(knobEl, indicatorEl, getValue, onChange){
+    let dragging = false, startY = 0, startVal = 0;
+    function render(val){
+      const deg = -135 + val * 270;
+      indicatorEl.style.transform = 'rotate(' + deg + 'deg)';
+    }
+    knobEl.addEventListener('pointerdown', e=>{
+      dragging = true; startY = e.clientY; startVal = getValue();
+      knobEl.setPointerCapture(e.pointerId);
+    });
+    knobEl.addEventListener('pointermove', e=>{
+      if (!dragging) return;
+      const dy = startY - e.clientY;
+      let val = startVal + dy/200;
+      val = Math.max(0, Math.min(1, val));
+      onChange(val);
+      render(val);
+    });
+    knobEl.addEventListener('pointerup', e=>{
+      dragging = false;
+      try{ knobEl.releasePointerCapture(e.pointerId); }catch(e2){}
+    });
+    knobEl.addEventListener('pointercancel', ()=>{ dragging = false; });
+    render(getValue());
+  }
+
+  const FADER_TRACK_H = 180;
+  const FADER_CAP_H = 24;
+  function makeFader(trackEl, capEl, getValue, onChange){
+    function render(v){
+      const top = (1 - v) * (FADER_TRACK_H - FADER_CAP_H);
+      capEl.style.top = top + 'px';
+    }
+    function valueFromClientY(clientY){
+      const rect = trackEl.getBoundingClientRect();
+      let y = clientY - rect.top - FADER_CAP_H / 2;
+      const maxY = FADER_TRACK_H - FADER_CAP_H;
+      y = Math.max(0, Math.min(maxY, y));
+      return 1 - (y / maxY);
+    }
+    let dragging = false;
+    trackEl.addEventListener('pointerdown', e=>{
+      dragging = true;
+      trackEl.setPointerCapture(e.pointerId);
+      const v = valueFromClientY(e.clientY);
+      onChange(v); render(v);
+    });
+    trackEl.addEventListener('pointermove', e=>{
+      if (!dragging) return;
+      const v = valueFromClientY(e.clientY);
+      onChange(v); render(v);
+    });
+    trackEl.addEventListener('pointerup', e=>{
+      dragging = false;
+      try{ trackEl.releasePointerCapture(e.pointerId); }catch(e2){}
+    });
+    trackEl.addEventListener('pointercancel', ()=>{ dragging = false; });
+    render(getValue());
+    return { render };
+  }
+
+  const METER_BARS = 14;
+  for (let i=0;i<METER_BARS;i++){
+    const bar = document.createElement('i');
+    meterEl.appendChild(bar);
+  }
+  const meterBars = meterEl.querySelectorAll('i');
+
+  let audioCtx=null, micStream=null, sourceNode=null, workletNode=null, analyser=null;
+  let distortionNode=null, toneFilter=null, distDryGain=null, distWetOutput=null, distSum=null;
+  let compressorNode=null, compDryGain=null, compWetOutput=null, compSum=null;
+  let delayNode=null, delayFeedbackGain=null, delayDryGain=null, delayWetOutput=null, delaySum=null;
+  let convolverNode=null, reverbToneFilter=null, reverbDryGain=null, reverbWetOutput=null, reverbSum=null;
+  let masterGainNode=null, limiterNode=null;
+  let running=false, rafId=null;
+  let currentSemitones = 0;
+
+  function showError(msg){
+    errorBox.style.display='block';
+    errorBox.textContent = msg;
+  }
+  function clearError(){
+    errorBox.style.display='none';
+    errorBox.textContent='';
+  }
+
+  function updateReadout(semi){
+    const sign = semi > 0 ? '+' : '';
+    readout.textContent = sign + semi.toFixed(1);
+  }
+  let pitchFaderCtl = null;
+  function updatePitchFaderVisual(semi){
+    if (pitchFaderCtl) pitchFaderCtl.render((semi + 24) / 48);
+  }
+
+  function setPitch(semi){
+    semi = Math.max(-24, Math.min(24, semi));
+    currentSemitones = semi;
+    const outputSemi = quantizeEnabled ? nearestScaleSemitone(semi) : semi;
+    updateReadout(outputSemi);
+    updatePitchFaderVisual(semi);
+    if (workletNode && audioCtx){
+      const ratio = Math.pow(2, outputSemi/12);
+      const p = workletNode.parameters.get('pitchRatio');
+      p.setTargetAtTime(ratio, audioCtx.currentTime, 0.01);
+    }
+  }
+
+  async function startMic(){
+    clearError();
+    try{
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const blob = new Blob([workletCode], {type:'application/javascript'});
+      const url = URL.createObjectURL(blob);
+      await audioCtx.audioWorklet.addModule(url);
+
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation:true, noiseSuppression:false, autoGainControl:false }
+      });
+
+      sourceNode = audioCtx.createMediaStreamSource(micStream);
+      workletNode = new AudioWorkletNode(audioCtx, 'pitch-shifter');
+      sourceNode.connect(workletNode);
+      sendAutotuneState();
+      applyFormant(formantKnobVal);
+
+      // --- Distortion pedal: dry/wet true-bypass ---
+      distortionNode = audioCtx.createWaveShaper();
+      distortionNode.oversample = '4x';
+      distortionNode.curve = makeDistortionCurve(driveKnobVal);
+
+      toneFilter = audioCtx.createBiquadFilter();
+      toneFilter.type = 'lowpass';
+      toneFilter.Q.value = 0.7;
+
+      distDryGain = audioCtx.createGain();
+      distWetOutput = audioCtx.createGain();
+      distSum = audioCtx.createGain();
+
+      workletNode.connect(distDryGain);
+      workletNode.connect(distortionNode);
+      distortionNode.connect(toneFilter);
+      toneFilter.connect(distWetOutput);
+      distDryGain.connect(distSum);
+      distWetOutput.connect(distSum);
+
+      // --- Compressor pedal: dry/wet true-bypass ---
+      compressorNode = audioCtx.createDynamicsCompressor();
+      compressorNode.release.value = 0.25;
+
+      compDryGain = audioCtx.createGain();
+      compWetOutput = audioCtx.createGain();
+      compSum = audioCtx.createGain();
+
+      distSum.connect(compDryGain);
+      distSum.connect(compressorNode);
+      compressorNode.connect(compWetOutput);
+      compDryGain.connect(compSum);
+      compWetOutput.connect(compSum);
+
+      // --- Delay pedal: dry/wet true-bypass, with feedback loop ---
+      delayNode = audioCtx.createDelay(1.5);
+      delayFeedbackGain = audioCtx.createGain();
+      delayDryGain = audioCtx.createGain();
+      delayWetOutput = audioCtx.createGain();
+      delaySum = audioCtx.createGain();
+
+      compSum.connect(delayDryGain);
+      compSum.connect(delayNode);
+      delayNode.connect(delayFeedbackGain);
+      delayFeedbackGain.connect(delayNode);
+      delayNode.connect(delayWetOutput);
+      delayDryGain.connect(delaySum);
+      delayWetOutput.connect(delaySum);
+
+      // --- Reverb pedal: dry/wet true-bypass, synthetic impulse response ---
+      convolverNode = audioCtx.createConvolver();
+      convolverNode.normalize = true;
+      convolverNode.buffer = generateImpulseResponse(audioCtx, 0.3 + reverbDecayKnobVal * 3.7);
+
+      reverbToneFilter = audioCtx.createBiquadFilter();
+      reverbToneFilter.type = 'lowpass';
+      reverbToneFilter.Q.value = 0.7;
+
+      reverbDryGain = audioCtx.createGain();
+      reverbWetOutput = audioCtx.createGain();
+      reverbSum = audioCtx.createGain();
+
+      delaySum.connect(reverbDryGain);
+      delaySum.connect(convolverNode);
+      convolverNode.connect(reverbToneFilter);
+      reverbToneFilter.connect(reverbWetOutput);
+      reverbDryGain.connect(reverbSum);
+      reverbWetOutput.connect(reverbSum);
+
+      // --- Master output volume + safety limiter (prevents clipping on boost) ---
+      masterGainNode = audioCtx.createGain();
+      limiterNode = audioCtx.createDynamicsCompressor();
+      limiterNode.threshold.value = -3;
+      limiterNode.knee.value = 0;
+      limiterNode.ratio.value = 20;
+      limiterNode.attack.value = 0.001;
+      limiterNode.release.value = 0.1;
+
+      reverbSum.connect(masterGainNode);
+      masterGainNode.connect(limiterNode);
+
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.6;
+
+      limiterNode.connect(analyser);
+      analyser.connect(audioCtx.destination);
+
+      setPitch(currentSemitones);
+      applyDrive(driveKnobVal);
+      applyTone(toneKnobVal);
+      applySustain(sustainKnobVal);
+      applyAttack(attackKnobVal);
+      applyDelayTime(delayTimeKnobVal);
+      applyDelayFeedback(delayFeedbackKnobVal);
+      applyReverbTone(reverbToneKnobVal);
+      applyMasterGain(masterKnobVal);
+      updateDistDryGain(); updateDistWetGain();
+      updateCompDryGain(); updateCompWetGain();
+      updateDelayDryGain(); updateDelayWetGain();
+      updateReverbDryGain(); updateReverbWetGain();
+      applyDistLevel(distLevelKnobVal);
+      applyCompLevel(compLevelKnobVal);
+      applyDelayLevel(delayLevelKnobVal);
+      applyReverbMix(reverbMixKnobVal);
+
+      running = true;
+      powerBtn.textContent = 'Выключить микрофон';
+      powerBtn.classList.add('on');
+      drawMeter();
+    } catch(err){
+      running = false;
+      powerBtn.classList.remove('on');
+      powerBtn.textContent = 'Включить микрофон';
+      if (err && err.name === 'NotAllowedError'){
+        showError('Доступ к микрофону запрещён. Разрешите доступ в настройках Safari (AA → Настройки сайта → Микрофон) и попробуйте снова.');
+      } else {
+        showError('Не удалось запустить эффект: ' + (err && err.message ? err.message : err));
+      }
+    }
+  }
+
+  function stopMic(){
+    if (rafId) cancelAnimationFrame(rafId);
+    if (micStream) micStream.getTracks().forEach(t=>t.stop());
+    if (audioCtx) audioCtx.close();
+    audioCtx=null; micStream=null; sourceNode=null; workletNode=null; analyser=null;
+    distortionNode=null; toneFilter=null; distDryGain=null; distWetOutput=null; distSum=null;
+    compressorNode=null; compDryGain=null; compWetOutput=null; compSum=null;
+    delayNode=null; delayFeedbackGain=null; delayDryGain=null; delayWetOutput=null; delaySum=null;
+    convolverNode=null; reverbToneFilter=null; reverbDryGain=null; reverbWetOutput=null; reverbSum=null;
+    masterGainNode=null; limiterNode=null;
+    running=false;
+    powerBtn.textContent = 'Включить микрофон';
+    powerBtn.classList.remove('on');
+    signalDot.classList.remove('live');
+    meterBars.forEach(b=>{ b.classList.remove('on','hot'); });
+  }
+
+  powerBtn.addEventListener('click', ()=>{
+    if (running) stopMic(); else startMic();
+  });
+
+  document.querySelectorAll('.preset-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      setPitch(parseFloat(btn.dataset.semi));
+    });
+  });
+
+  // Pitch + Formant faders
+  pitchFaderCtl = makeFader(pitchTrack, pitchCap, ()=>(currentSemitones + 24) / 48, v=>{
+    setPitch(Math.round((-24 + v * 48) * 2) / 2);
+  });
+  makeFader(formantTrack, formantCap, ()=>formantKnobVal, applyFormant);
+
+  makeSmallKnob(driveKnob, driveIndicator, ()=>driveKnobVal, applyDrive);
+  makeSmallKnob(toneKnob, toneIndicator, ()=>toneKnobVal, applyTone);
+  makeSmallKnob(distLevelKnob, distLevelIndicator, ()=>distLevelKnobVal, applyDistLevel);
+  makeSmallKnob(sustainKnob, sustainIndicator, ()=>sustainKnobVal, applySustain);
+  makeSmallKnob(attackKnob, attackIndicator, ()=>attackKnobVal, applyAttack);
+  makeSmallKnob(compLevelKnob, compLevelIndicator, ()=>compLevelKnobVal, applyCompLevel);
+  makeSmallKnob(delayTimeKnob, delayTimeIndicator, ()=>delayTimeKnobVal, applyDelayTime);
+  makeSmallKnob(delayFeedbackKnob, delayFeedbackIndicator, ()=>delayFeedbackKnobVal, applyDelayFeedback);
+  makeSmallKnob(delayLevelKnob, delayLevelIndicator, ()=>delayLevelKnobVal, applyDelayLevel);
+  makeSmallKnob(reverbDecayKnob, reverbDecayIndicator, ()=>reverbDecayKnobVal, applyReverbDecay);
+  makeSmallKnob(reverbToneKnob, reverbToneIndicator, ()=>reverbToneKnobVal, applyReverbTone);
+  makeSmallKnob(reverbMixKnob, reverbMixIndicator, ()=>reverbMixKnobVal, applyReverbMix);
+  makeSmallKnob(masterKnob, masterIndicator, ()=>masterKnobVal, applyMasterGain);
+  makeSmallKnob(autotuneSpeedKnob, autotuneSpeedIndicator, ()=>autotuneSpeedKnobVal, applyAutotuneSpeed);
+
+  distFootswitch.addEventListener('click', toggleDistBypass);
+  compFootswitch.addEventListener('click', toggleCompBypass);
+  delayFootswitch.addEventListener('click', toggleDelayBypass);
+  reverbFootswitch.addEventListener('click', toggleReverbBypass);
+  autotuneFootswitch.addEventListener('click', toggleAutotune);
+
+  keyRootSelect.addEventListener('change', e=>{
+    keyRootValue = parseInt(e.target.value, 10);
+    setPitch(currentSemitones);
+    sendAutotuneState();
+  });
+  majorBtn.addEventListener('click', ()=>{
+    scaleType = 'major';
+    majorBtn.classList.add('active');
+    minorBtn.classList.remove('active');
+    setPitch(currentSemitones);
+    sendAutotuneState();
+  });
+  minorBtn.addEventListener('click', ()=>{
+    scaleType = 'minor';
+    minorBtn.classList.add('active');
+    majorBtn.classList.remove('active');
+    setPitch(currentSemitones);
+    sendAutotuneState();
+  });
+  quantFootswitch.addEventListener('click', ()=>{
+    quantizeEnabled = !quantizeEnabled;
+    quantFootswitch.classList.toggle('engaged', quantizeEnabled);
+    setPitch(currentSemitones);
+  });
+
+  function drawMeter(){
+    if (!running || !analyser) return;
+    const data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+    let sumSq=0;
+    for (let i=0;i<data.length;i++){
+      const v = (data[i]-128)/128;
+      sumSq += v*v;
+    }
+    const rms = Math.sqrt(sumSq/data.length);
+    const level = Math.min(1, rms*4);
+    signalDot.classList.toggle('live', level > 0.03);
+
+    const litCount = Math.round(level * METER_BARS);
+    meterBars.forEach((bar, idx)=>{
+      bar.classList.remove('on','hot');
+      if (idx < litCount){
+        bar.classList.add(idx >= METER_BARS-2 ? 'hot' : 'on');
+      }
+    });
+
+    rafId = requestAnimationFrame(drawMeter);
+  }
+
+  setPitch(0);
+})();
+</script>
+</body>
+</html>
